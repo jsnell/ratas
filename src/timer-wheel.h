@@ -131,12 +131,12 @@ public:
     void advance(Timestamp delta) {
         while (delta--) {
             now_++;
-            size_t slot_index = now_ & (NUM_SLOTS - 1);
+            size_t slot_index = now_ & MASK;
             auto slot = &slots_[slot_index];
             while (slot->events()) {
                 auto event = slot->pop_event();
                 if (down_) {
-                    assert((down_->now_ & (NUM_SLOTS - 1)) == 0);
+                    assert((down_->now_ & MASK) == 0);
                     down_->schedule_absolute(event, event->scheduled_at());
                 } else {
                     event->execute();
@@ -154,10 +154,10 @@ public:
         }
 
         if (delta >= NUM_SLOTS) {
-            return up_->schedule(event, delta >> WIDTH_BITS);
+            return up_->schedule(event, (delta + (now_ & MASK)) >> WIDTH_BITS);
         }
 
-        size_t slot_index = (now_ + delta) & (NUM_SLOTS - 1);
+        size_t slot_index = (now_ + delta) & MASK;
         auto slot = &slots_[slot_index];
         slot->push_event(event);
     }
@@ -177,7 +177,7 @@ private:
     void schedule_absolute(TimerEvent<CBType>* event, Timestamp absolute) {
         Timestamp delta;
         delta = absolute - now_;
-        assert(absolute > now_);
+        assert(absolute >= now_);
         assert(delta < NUM_SLOTS);
         if (delta == 0) {
             if (!down_) {
@@ -195,6 +195,7 @@ private:
 
     static const int WIDTH_BITS = 8;
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
+    static const int MASK = (NUM_SLOTS - 1);
     TimerWheelSlot<CBType> slots_[NUM_SLOTS];
     HierarchicalTimerWheel<CBType>* up_;
     HierarchicalTimerWheel<CBType>* down_;

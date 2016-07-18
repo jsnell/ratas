@@ -12,7 +12,7 @@
 #include <cstdio>
 #include <list>
 
-typedef uint64_t Timestamp;
+typedef uint64_t Tick;
 
 template<typename CBType>
 class TimerWheelSlot;
@@ -66,14 +66,14 @@ public:
         return slot_ != NULL;
     }
 
-    Timestamp scheduled_at() { return scheduled_at_; }
-    void set_scheduled_at(Timestamp ts) { scheduled_at_ = ts; }
+    Tick scheduled_at() { return scheduled_at_; }
+    void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
 
 private:
     TimerEvent(const TimerEvent& other) = delete;
     TimerEvent& operator=(const TimerEvent& other) = delete;
 
-    Timestamp scheduled_at_;
+    Tick scheduled_at_;
     CBType callback_;
     // The slot this event is currently in (NULL if not currently scheduled).
     TimerWheelSlot<CBType>* slot_ = NULL;
@@ -128,7 +128,7 @@ public:
           down_(NULL) {
     }
 
-    void advance(Timestamp delta) {
+    void advance(Tick delta) {
         while (delta--) {
             now_++;
             size_t slot_index = now_ & MASK;
@@ -148,7 +148,7 @@ public:
         }
     }
 
-    void schedule(TimerEvent<CBType>* event, Timestamp delta) {
+    void schedule(TimerEvent<CBType>* event, Tick delta) {
         if (!down_) {
             event->set_scheduled_at(now_ + delta);
         }
@@ -174,8 +174,8 @@ private:
         }
     }
 
-    void schedule_absolute(TimerEvent<CBType>* event, Timestamp absolute) {
-        Timestamp delta;
+    void schedule_absolute(TimerEvent<CBType>* event, Tick absolute) {
+        Tick delta;
         delta = absolute - now_;
         assert(absolute >= now_);
         assert(delta < NUM_SLOTS);
@@ -191,7 +191,7 @@ private:
         schedule(event, delta);
     }
 
-    Timestamp now_;
+    Tick now_;
 
     static const int WIDTH_BITS = 8;
     static const int NUM_SLOTS = 1 << WIDTH_BITS;

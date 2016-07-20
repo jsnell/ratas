@@ -140,6 +140,29 @@ bool test_single_timer_hierarchy() {
     return true;
 }
 
+bool test_reschedule_from_timer() {
+    typedef std::function<void()> Callback;
+    TimerWheel timers;
+    int count = 0;
+    TimerEvent<Callback> timer([&count] () { ++count; });
+
+    // For every slot in the outermost wheel, try scheduling a timer from
+    // a timer handler 258 ticks in the future. Then reschedule it in 257
+    // ticks. It should never actually trigger.
+    for (int i = 0; i < 256; ++i) {
+        TimerEvent<Callback> rescheduler([&timers, &timer] () { timers.schedule(&timer, 258); });
+
+        timers.schedule(&rescheduler, 1);
+        timers.advance(257);
+        EXPECT_INTEQ(count, 0);
+    }
+    // But once we stop rescheduling the timer, it'll trigger as intended.
+    timers.advance(2);
+    EXPECT_INTEQ(count, 1);
+
+    return true;
+}
+
 bool test_single_timer_random() {
     typedef std::function<void()> Callback;
     TimerWheel timers;
@@ -206,8 +229,8 @@ int main(void) {
     TEST(test_single_timer_no_hierarchy);
     TEST(test_single_timer_hierarchy);
     TEST(test_single_timer_random);
+    TEST(test_reschedule_from_timer);
     TEST(test_timeout_method);
     // Test canceling timer from within timer
-    // Test rescheduling timer from within timer
     return ok ? 0 : 1;
 }

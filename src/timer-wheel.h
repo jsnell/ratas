@@ -127,6 +127,9 @@ public:
             now_++;
             size_t slot_index = now_ & MASK;
             auto slot = &slots_[slot_index];
+            if (slot_index == 0 && up_) {
+                up_->advance(1);
+            }
             while (slot->events()) {
                 auto event = slot->pop_event();
                 if (down_) {
@@ -135,9 +138,6 @@ public:
                 } else {
                     event->execute();
                 }
-            }
-            if (slot_index == 0 && up_) {
-                up_->advance(1);
             }
         }
     }

@@ -39,7 +39,7 @@
 
 bool test_single_timer_no_hierarchy() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel timers;
+    TimerWheel timers;
     int count = 0;
     TimerEvent<Callback> timer([&count] () { ++count; });
 
@@ -76,7 +76,7 @@ bool test_single_timer_no_hierarchy() {
 
 bool test_single_timer_hierarchy() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel timers;
+    TimerWheel timers;
     int count = 0;
     TimerEvent<Callback> timer([&count] () { ++count; });
 
@@ -119,7 +119,7 @@ bool test_single_timer_hierarchy() {
 
 bool test_single_timer_random() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel timers;
+    TimerWheel timers;
     int count = 0;
     TimerEvent<Callback> timer([&count] () { ++count; });
 
@@ -143,7 +143,7 @@ public:
         : inc_timer_(this), reset_timer_(this) {
     }
 
-    void start(HierarchicalTimerWheel* timers) {
+    void start(TimerWheel* timers) {
         timers->schedule(&inc_timer_, 10);
         timers->schedule(&reset_timer_, 15);
     }
@@ -165,7 +165,7 @@ private:
 };
 
 bool test_timeout_method() {
-    HierarchicalTimerWheel timers;
+    TimerWheel timers;
 
     Test test;
     test.start(&timers);

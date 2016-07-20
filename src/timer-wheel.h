@@ -15,7 +15,7 @@
 typedef uint64_t Tick;
 
 class TimerWheelSlot;
-class HierarchicalTimerWheel;
+class TimerWheel;
 
 class TimerEventInterface {
 public:
@@ -114,11 +114,11 @@ private:
     TimerEventInterface* events_ = NULL;
 };
 
-class HierarchicalTimerWheel {
+class TimerWheel {
 public:
-    HierarchicalTimerWheel()
+    TimerWheel()
         : now_(0),
-          up_(new HierarchicalTimerWheel(WIDTH_BITS, this)),
+          up_(new TimerWheel(WIDTH_BITS, this)),
           down_(NULL) {
     }
 
@@ -157,14 +157,14 @@ public:
     }
 
 private:
-    HierarchicalTimerWheel(const HierarchicalTimerWheel& other) = delete;
-    HierarchicalTimerWheel& operator=(const HierarchicalTimerWheel& other) = delete;
+    TimerWheel(const TimerWheel& other) = delete;
+    TimerWheel& operator=(const TimerWheel& other) = delete;
 
-    HierarchicalTimerWheel(int offset, HierarchicalTimerWheel* down)
+    TimerWheel(int offset, TimerWheel* down)
         : now_(0),
           down_(down) {
         if (offset + WIDTH_BITS < 64) {
-            up_ = new HierarchicalTimerWheel(offset + WIDTH_BITS, this);
+            up_ = new TimerWheel(offset + WIDTH_BITS, this);
         }
     }
 
@@ -191,8 +191,8 @@ private:
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
     static const int MASK = (NUM_SLOTS - 1);
     TimerWheelSlot slots_[NUM_SLOTS];
-    HierarchicalTimerWheel* up_;
-    HierarchicalTimerWheel* down_;
+    TimerWheel* up_;
+    TimerWheel* down_;
 };
 
 void TimerEventInterface::cancel() {

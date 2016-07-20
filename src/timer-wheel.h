@@ -134,7 +134,13 @@ public:
                 auto event = slot->pop_event();
                 if (down_) {
                     assert((down_->now_ & MASK) == 0);
-                    down_->schedule_absolute(event, event->scheduled_at());
+                    Tick now = down_->now();
+                    if (now >= event->scheduled_at()) {
+                        event->execute();
+                    } else {
+                        down_->schedule(event,
+                                        event->scheduled_at() - now);
+                    }
                 } else {
                     event->execute();
                 }
@@ -174,25 +180,8 @@ private:
         : now_(0),
           down_(down) {
         if (offset + WIDTH_BITS < 64) {
-            up_ = new TimerWheel(offset + WIDTH_BITS, this);
+            up_ = new TimerWheel(offset + WIDTH_BITS, down);
         }
-    }
-
-    void schedule_absolute(TimerEventInterface* event, Tick absolute) {
-        Tick delta;
-        delta = absolute - now_;
-        assert(absolute >= now_);
-        assert(delta < NUM_SLOTS);
-        if (delta == 0) {
-            if (!down_) {
-                event->execute();
-            } else {
-                down_->schedule_absolute(event, absolute);
-            }
-            return;
-        }
-
-        schedule(event, delta);
     }
 
     Tick now_;

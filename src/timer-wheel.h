@@ -14,53 +14,21 @@
 
 typedef uint64_t Tick;
 
-template<typename CBType>
 class TimerWheelSlot;
-
-template<typename CBType>
 class HierarchicalTimerWheel;
 
-template<typename CBType>
-class TimerEvent {
+class TimerEventInterface {
 public:
-    TimerEvent<CBType>(const CBType& callback,
-                       HierarchicalTimerWheel<CBType>* timers)
-      : callback_(callback),
-        prev_(NULL),
-        next_(NULL) {
+    TimerEventInterface()
+        : slot_(NULL),
+          next_(NULL),
+          prev_(NULL) {
     }
 
-    void cancel() {
-        if (this == slot_->events()) {
-            slot_->pop_event();
-        } else {
-            auto prev = prev_;
-            auto next = next_;
-            if (prev) {
-                prev->next_ = next;
-            }
-            if (next) {
-                next->prev_ = prev;
-            }
-            prev_ = NULL;
-            next_ = NULL;
-        }
-        slot_ = NULL;
-    }
+    void cancel();
+    void relink(TimerWheelSlot* slot);
 
-    void relink(TimerWheelSlot<CBType>* slot) {
-        assert(slot_);
-        if (slot_ == slot) {
-            return;
-        }
-        cancel();
-        slot_ = slot;
-        slot_->push_event(this);
-    }
-
-    void execute() {
-        callback_();
-    }
+    virtual void execute() = 0;
 
     bool active() {
         return slot_ != NULL;
@@ -68,32 +36,59 @@ public:
 
     Tick scheduled_at() { return scheduled_at_; }
     void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
-
 private:
-    TimerEvent(const TimerEvent& other) = delete;
-    TimerEvent& operator=(const TimerEvent& other) = delete;
+    TimerEventInterface(const TimerEventInterface& other) = delete;
+    TimerEventInterface& operator=(const TimerEventInterface& other) = delete;
+    friend TimerWheelSlot;
 
     Tick scheduled_at_;
-    CBType callback_;
     // The slot this event is currently in (NULL if not currently scheduled).
-    TimerWheelSlot<CBType>* slot_ = NULL;
+    TimerWheelSlot* slot_ = NULL;
     // The events are linked together in the slot using an internal
     // doubly-linked list; this iterator does double duty as the
     // linked list node for this event.
-    // typename std::list<TimerEvent<CBType>*>::iterator it_;
-    TimerEvent<CBType>* prev_;
-    TimerEvent<CBType>* next_;
-    friend TimerWheelSlot<CBType>;
+    TimerEventInterface* next_;
+    TimerEventInterface* prev_;
 };
 
 template<typename CBType>
-class TimerWheelSlot {
+class TimerEvent : public TimerEventInterface {
 public:
-    TimerWheelSlot() : events_(NULL) {
+    TimerEvent<CBType>(const CBType& callback)
+      : callback_(callback) {
     }
 
-    TimerEvent<CBType>* events() { return events_; }
-    TimerEvent<CBType>* pop_event() {
+    void execute() {
+        callback_();
+    }
+
+private:
+    TimerEvent<CBType>(const TimerEvent<CBType>& other) = delete;
+    TimerEvent<CBType>& operator=(const TimerEvent<CBType>& other) = delete;
+    CBType callback_;
+};
+
+template<typename T, void(T::*MFun)() >
+class MemberTimerEvent : public TimerEventInterface {
+public:
+    MemberTimerEvent(T* obj) : obj_(obj) {
+    }
+
+    virtual void execute () {
+        (obj_->*MFun)();
+    }
+
+private:
+    T* obj_;
+};
+
+class TimerWheelSlot {
+public:
+    TimerWheelSlot() {
+    }
+
+    TimerEventInterface* events() { return events_; }
+    TimerEventInterface* pop_event() {
         auto event = events_;
         events_ = event->next_;
         if (events_) {
@@ -103,7 +98,7 @@ public:
         event->slot_ = NULL;
         return event;
     }
-    void push_event(TimerEvent<CBType>* event) {
+    void push_event(TimerEventInterface* event) {
         event->slot_ = this;
         event->next_ = events_;
         if (events_) {
@@ -116,15 +111,14 @@ private:
     TimerWheelSlot(const TimerWheelSlot& other) = delete;
     TimerWheelSlot& operator=(const TimerWheelSlot& other) = delete;
 
-    TimerEvent<CBType>* events_;
+    TimerEventInterface* events_ = NULL;
 };
 
-template<typename CBType>
 class HierarchicalTimerWheel {
 public:
     HierarchicalTimerWheel()
         : now_(0),
-          up_(new HierarchicalTimerWheel<CBType>(WIDTH_BITS, this)),
+          up_(new HierarchicalTimerWheel(WIDTH_BITS, this)),
           down_(NULL) {
     }
 
@@ -148,7 +142,7 @@ public:
         }
     }
 
-    void schedule(TimerEvent<CBType>* event, Tick delta) {
+    void schedule(TimerEventInterface* event, Tick delta) {
         if (!down_) {
             event->set_scheduled_at(now_ + delta);
         }
@@ -170,11 +164,11 @@ private:
         : now_(0),
           down_(down) {
         if (offset + WIDTH_BITS < 64) {
-            up_ = new HierarchicalTimerWheel<CBType>(offset + WIDTH_BITS, this);
+            up_ = new HierarchicalTimerWheel(offset + WIDTH_BITS, this);
         }
     }
 
-    void schedule_absolute(TimerEvent<CBType>* event, Tick absolute) {
+    void schedule_absolute(TimerEventInterface* event, Tick absolute) {
         Tick delta;
         delta = absolute - now_;
         assert(absolute >= now_);
@@ -196,9 +190,38 @@ private:
     static const int WIDTH_BITS = 8;
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
     static const int MASK = (NUM_SLOTS - 1);
-    TimerWheelSlot<CBType> slots_[NUM_SLOTS];
-    HierarchicalTimerWheel<CBType>* up_;
-    HierarchicalTimerWheel<CBType>* down_;
+    TimerWheelSlot slots_[NUM_SLOTS];
+    HierarchicalTimerWheel* up_;
+    HierarchicalTimerWheel* down_;
 };
+
+void TimerEventInterface::cancel() {
+    if (this == slot_->events()) {
+        slot_->pop_event();
+    } else {
+        auto prev = prev_;
+        auto next = next_;
+        if (prev) {
+            prev->next_ = next;
+        }
+        if (next) {
+            next->prev_ = prev;
+        }
+        prev_ = NULL;
+        next_ = NULL;
+    }
+    slot_ = NULL;
+}
+
+void TimerEventInterface::relink(TimerWheelSlot* slot) {
+    assert(slot_);
+    if (slot_ == slot) {
+        return;
+    }
+    cancel();
+    slot_ = slot;
+    slot_->push_event(this);
+}
+
 
 #endif //  _TIMER_WHEEL_H

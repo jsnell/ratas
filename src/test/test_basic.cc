@@ -36,10 +36,9 @@
 
 bool test_single_timer_no_hierarchy() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel<Callback> timers;
+    HierarchicalTimerWheel timers;
     int count = 0;
-    TimerEvent<Callback> timer([&count] () { ++count; },
-        &timers);
+    TimerEvent<Callback> timer([&count] () { ++count; });
 
     timers.advance(10);
     EXPECT_INTEQ(count, 0);
@@ -74,10 +73,9 @@ bool test_single_timer_no_hierarchy() {
 
 bool test_single_timer_hierarchy() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel<Callback> timers;
+    HierarchicalTimerWheel timers;
     int count = 0;
-    TimerEvent<Callback> timer([&count] () { ++count; },
-        &timers);
+    TimerEvent<Callback> timer([&count] () { ++count; });
 
     EXPECT_INTEQ(count, 0);
 
@@ -118,10 +116,9 @@ bool test_single_timer_hierarchy() {
 
 bool test_single_timer_random() {
     typedef std::function<void()> Callback;
-    HierarchicalTimerWheel<Callback> timers;
+    HierarchicalTimerWheel timers;
     int count = 0;
-    TimerEvent<Callback> timer([&count] () { ++count; },
-        &timers);
+    TimerEvent<Callback> timer([&count] () { ++count; });
 
     for (int i = 0; i < 10000; ++i) {
         int len = rand() % 20;
@@ -137,11 +134,53 @@ bool test_single_timer_random() {
     return true;
 }
 
+class Test {
+public:
+    Test()
+        : inc_timer_(this), reset_timer_(this) {
+    }
+
+    void start(HierarchicalTimerWheel* timers) {
+        timers->schedule(&inc_timer_, 10);
+        timers->schedule(&reset_timer_, 15);
+    }
+
+    void on_inc() {
+        count_++;
+    }
+
+    void on_reset() {
+        count_ = 0;
+    }
+
+    int count() { return count_; }
+
+private:
+    MemberTimerEvent<Test, &Test::on_inc> inc_timer_;
+    MemberTimerEvent<Test, &Test::on_reset> reset_timer_;
+    int count_ = 0;
+};
+
+bool test_timeout_method() {
+    HierarchicalTimerWheel timers;
+
+    Test test;
+    test.start(&timers);
+
+    EXPECT_INTEQ(test.count(), 0);
+    timers.advance(10);
+    EXPECT_INTEQ(test.count(), 1);
+    timers.advance(5);
+    EXPECT_INTEQ(test.count(), 0);
+    return true;
+}
+
 int main(void) {
     bool ok = true;
     TEST(test_single_timer_no_hierarchy);
     TEST(test_single_timer_hierarchy);
     TEST(test_single_timer_random);
+    TEST(test_timeout_method);
     // Test canceling timer from within timer
     // Test rescheduling timer from within timer
     return ok ? 0 : 1;

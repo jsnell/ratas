@@ -19,14 +19,10 @@ class TimerWheel;
 
 class TimerEventInterface {
 public:
-    TimerEventInterface()
-        : slot_(NULL),
-          next_(NULL),
-          prev_(NULL) {
+    TimerEventInterface() {
     }
 
     void cancel();
-    void relink(TimerWheelSlot* slot);
 
     virtual void execute() = 0;
 
@@ -36,10 +32,14 @@ public:
 
     Tick scheduled_at() { return scheduled_at_; }
     void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
+
 private:
     TimerEventInterface(const TimerEventInterface& other) = delete;
     TimerEventInterface& operator=(const TimerEventInterface& other) = delete;
     friend TimerWheelSlot;
+    friend TimerWheel;
+
+    void relink(TimerWheelSlot* slot);
 
     Tick scheduled_at_;
     // The slot this event is currently in (NULL if not currently scheduled).
@@ -47,8 +47,8 @@ private:
     // The events are linked together in the slot using an internal
     // doubly-linked list; this iterator does double duty as the
     // linked list node for this event.
-    TimerEventInterface* next_;
-    TimerEventInterface* prev_;
+    TimerEventInterface* next_ = NULL;
+    TimerEventInterface* prev_ = NULL;
 };
 
 template<typename CBType>
@@ -96,20 +96,20 @@ public:
         }
         event->next_ = NULL;
         event->slot_ = NULL;
+        lose_event();
         return event;
-    }
-    void push_event(TimerEventInterface* event) {
-        event->slot_ = this;
-        event->next_ = events_;
-        if (events_) {
-            events_->prev_ = event;
-        }
-        events_ = event;
     }
 
 private:
     TimerWheelSlot(const TimerWheelSlot& other) = delete;
     TimerWheelSlot& operator=(const TimerWheelSlot& other) = delete;
+    friend TimerEventInterface;
+
+    void lose_event() {
+    }
+
+    void gain_event(TimerEventInterface *e) {
+    }
 
     TimerEventInterface* events_ = NULL;
 };
@@ -159,11 +159,7 @@ public:
 
         size_t slot_index = (now_ + delta) & MASK;
         auto slot = &slots_[slot_index];
-        if (event->active()) {
-            event->relink(slot);
-        } else {
-            slot->push_event(event);
-        }
+        event->relink(slot);
     }
 
     // Return the current tick value. Note that if the timers advance by
@@ -194,38 +190,52 @@ private:
     TimerWheel* down_;
 };
 
+void TimerEventInterface::relink(TimerWheelSlot* new_slot) {
+    if (new_slot == slot_) {
+        return;
+    }
+
+    // Unlink from old location.
+    if (slot_) {
+        auto prev = prev_;
+        auto next = next_;
+        if (next) {
+            next->prev_ = prev;
+        }
+        if (prev) {
+            prev->next_ = next;
+        } else {
+            // Must be at head of slot. Move the next item to the head.
+            slot_->events_ = next;
+        }
+        slot_->lose_event();
+    }
+
+    // Insert in new slot.
+    {
+        if (new_slot) {
+            auto old = new_slot->events_;
+            next_ = old;
+            if (old) {
+                old->prev_ = this;
+            }
+            new_slot->events_ = this;
+            new_slot->gain_event(this);
+        } else {
+            next_ = NULL;
+        }
+        prev_ = NULL;
+    }
+    slot_ = new_slot;
+}
+
 void TimerEventInterface::cancel() {
     // It's ok to cancel a timer that's not running.
     if (!slot_) {
         return;
     }
 
-    if (this == slot_->events()) {
-        slot_->pop_event();
-    } else {
-        auto prev = prev_;
-        auto next = next_;
-        if (prev) {
-            prev->next_ = next;
-        }
-        if (next) {
-            next->prev_ = prev;
-        }
-        prev_ = NULL;
-        next_ = NULL;
-    }
-    slot_ = NULL;
+    relink(NULL);
 }
-
-void TimerEventInterface::relink(TimerWheelSlot* slot) {
-    assert(slot_);
-    if (slot_ == slot) {
-        return;
-    }
-    cancel();
-    slot_ = slot;
-    slot_->push_event(this);
-}
-
 
 #endif //  _TIMER_WHEEL_H

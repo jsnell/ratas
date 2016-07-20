@@ -206,6 +206,11 @@ private:
 };
 
 void TimerEventInterface::cancel() {
+    // It's ok to cancel a timer that's not running.
+    if (!slot_) {
+        return;
+    }
+
     if (this == slot_->events()) {
         slot_->pop_event();
     } else {

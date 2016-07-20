@@ -86,6 +86,14 @@ bool test_single_timer_no_hierarchy() {
     timers.advance(5);
     EXPECT_INTEQ(count, 4);
 
+    // Timer can safely be canceled multiple times.
+    timers.schedule(&timer, 5);
+    timer.cancel();
+    timer.cancel();
+    EXPECT(!timer.active());
+    timers.advance(10);
+    EXPECT_INTEQ(count, 4);
+
     return true;
 }
 

@@ -1,4 +1,7 @@
+// -*- mode: c++; c-basic-offset: 4 indent-tabs-mode: nil -*- */
 //
+// Copyright 2016 Juho Snellman, released under a MIT license (see
+// LICENSE).
 
 #include <functional>
 

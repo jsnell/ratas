@@ -43,22 +43,28 @@ bool test_single_timer_no_hierarchy() {
     int count = 0;
     TimerEvent<Callback> timer([&count] () { ++count; });
 
+    // Unscheduled timer does nothing.
     timers.advance(10);
     EXPECT_INTEQ(count, 0);
     EXPECT(!timer.active());
 
+    // Schedule timer, should trigger at right time.
     timers.schedule(&timer, 5);
     EXPECT(timer.active());
-    timers.advance(10);
+    timers.advance(5);
     EXPECT_INTEQ(count, 1);
 
-    timers.advance(10);
+    // Only trigger once, not repeatedly (even if wheel wraps
+    // around).
+    timers.advance(256);
     EXPECT_INTEQ(count, 1);
 
+    // ... unless, of course, the timer gets scheduled again.
     timers.schedule(&timer, 5);
-    timers.advance(10);
+    timers.advance(5);
     EXPECT_INTEQ(count, 2);
 
+    // Canceled timers don't run.
     timers.schedule(&timer, 5);
     timer.cancel();
     EXPECT(!timer.active());
@@ -70,6 +76,15 @@ bool test_single_timer_no_hierarchy() {
     timers.schedule(&timer, 5);
     timers.advance(10);
     EXPECT_INTEQ(count, 3);
+
+    // Timers that are scheduled multiple times only run at the last
+    // scheduled tick.
+    timers.schedule(&timer, 5);
+    timers.schedule(&timer, 10);
+    timers.advance(5);
+    EXPECT_INTEQ(count, 3);
+    timers.advance(5);
+    EXPECT_INTEQ(count, 4);
 
     return true;
 }

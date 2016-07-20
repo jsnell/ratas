@@ -153,8 +153,18 @@ public:
 
         size_t slot_index = (now_ + delta) & MASK;
         auto slot = &slots_[slot_index];
-        slot->push_event(event);
+        if (event->active()) {
+            event->relink(slot);
+        } else {
+            slot->push_event(event);
+        }
     }
+
+    // Return the current tick value. Note that if the timers advance by
+    // multiple ticks during a single call to advance(), the value of now()
+    // will be the tick on which the timer was first run. Not the tick that
+    // the timer eventually will advance to.
+    const Tick& now() const { return now_; }
 
 private:
     TimerWheel(const TimerWheel& other) = delete;

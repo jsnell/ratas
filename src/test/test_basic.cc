@@ -29,10 +29,10 @@
 #define EXPECT_INTEQ(actual, expect)                    \
     do {                                                \
         if (expect != actual)  {                        \
-            printf("%s:%d: Expect failed, wanted %d"    \
-                   " got %d\n",                         \
+            printf("%s:%d: Expect failed, wanted %ld"   \
+                   " got %ld\n",                        \
                    __FILE__, __LINE__,                  \
-                   expect, actual);                     \
+                   (long) expect, (long) actual);       \
             return false;                               \
         }                                               \
     } while (0)
@@ -140,6 +140,66 @@ bool test_single_timer_hierarchy() {
     return true;
 }
 
+bool test_ticks_to_next_event() {
+    typedef std::function<void()> Callback;
+    TimerWheel timers;
+    TimerEvent<Callback> timer([] () { });
+    TimerEvent<Callback> timer2([] () { });
+
+    // No timers scheduled, return the max value.
+    EXPECT_INTEQ(timers.ticks_to_next_event(100), 100);
+    EXPECT_INTEQ(timers.ticks_to_next_event(0), 0);
+
+    for (int i = 0; i < 10; ++i) {
+        // Just vanilla tests
+        timers.schedule(&timer, 1);
+        EXPECT_INTEQ(timers.ticks_to_next_event(100), 1);
+
+        timers.schedule(&timer, 20);
+        EXPECT_INTEQ(timers.ticks_to_next_event(100), 20);
+
+        // Check the the "max" parameters works.
+        timers.schedule(&timer, 150);
+        EXPECT_INTEQ(timers.ticks_to_next_event(100), 100);
+
+        // Check that a timer on the next layer can be found.
+        timers.schedule(&timer, 280);
+        EXPECT_INTEQ(timers.ticks_to_next_event(100), 100);
+        EXPECT_INTEQ(timers.ticks_to_next_event(1000), 280);
+
+        // Test having a timer on the next wheel (still remaining from
+        // the previous test), and another (earlier) timer on this
+        // wheel.
+        for (int i = 1; i < 256; ++i) {
+            timers.schedule(&timer2, i);
+            EXPECT_INTEQ(timers.ticks_to_next_event(1000), i);
+        }
+
+        timer.cancel();
+        timer2.cancel();
+        // And then run these same tests from a bunch of different
+        // wheel locations.
+        timers.advance(32);
+    }
+
+    // More thorough tests for cases where the next timer could be on
+    // either of two different wheels.
+    for (int i = 0; i < 20; ++i) {
+        timers.schedule(&timer, 270);
+        timers.advance(128);
+        EXPECT_INTEQ(timers.ticks_to_next_event(512), 270 - 128);
+        timers.schedule(&timer2, 250);
+        EXPECT_INTEQ(timers.ticks_to_next_event(512), 270 - 128);
+        timers.schedule(&timer2, 10);
+        EXPECT_INTEQ(timers.ticks_to_next_event(512), 10);
+
+        // Again, do this from a bunch of different locatoins.
+        timers.advance(32);
+    }
+
+    return true;
+}
+
 bool test_reschedule_from_timer() {
     typedef std::function<void()> Callback;
     TimerWheel timers;
@@ -228,6 +288,7 @@ int main(void) {
     bool ok = true;
     TEST(test_single_timer_no_hierarchy);
     TEST(test_single_timer_hierarchy);
+    TEST(test_ticks_to_next_event);
     TEST(test_single_timer_random);
     TEST(test_reschedule_from_timer);
     TEST(test_timeout_method);

@@ -10,7 +10,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
-#include <list>
+#include <limits>
 
 typedef uint64_t Tick;
 
@@ -26,11 +26,11 @@ public:
 
     virtual void execute() = 0;
 
-    bool active() {
+    bool active() const {
         return slot_ != NULL;
     }
 
-    Tick scheduled_at() { return scheduled_at_; }
+    Tick scheduled_at() const { return scheduled_at_; }
     void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
 
 private:
@@ -87,7 +87,7 @@ public:
     TimerWheelSlot() {
     }
 
-    TimerEventInterface* events() { return events_; }
+    const TimerEventInterface* events() const { return events_; }
     TimerEventInterface* pop_event() {
         auto event = events_;
         events_ = event->next_;
@@ -96,7 +96,6 @@ public:
         }
         event->next_ = NULL;
         event->slot_ = NULL;
-        lose_event();
         return event;
     }
 
@@ -104,12 +103,6 @@ private:
     TimerWheelSlot(const TimerWheelSlot& other) = delete;
     TimerWheelSlot& operator=(const TimerWheelSlot& other) = delete;
     friend TimerEventInterface;
-
-    void lose_event() {
-    }
-
-    void gain_event(TimerEventInterface *e) {
-    }
 
     TimerEventInterface* events_ = NULL;
 };
@@ -166,7 +159,50 @@ public:
     // multiple ticks during a single call to advance(), the value of now()
     // will be the tick on which the timer was first run. Not the tick that
     // the timer eventually will advance to.
-    const Tick& now() const { return now_; }
+    Tick now() const { return now_; }
+
+    Tick ticks_to_next_event(const Tick& max = 0) {
+        // The actual current time (not the bitshifted time)
+        Tick now = down_ ? down_->now() : now_;
+
+        // Smallest tick we've found.
+        Tick min = max ? now + max : std::numeric_limits<Tick>::max();
+        for (int i = 0; i < NUM_SLOTS; ++i) {
+            // Note: Unlike the uses of "now", slot index calculations really
+            // need to use now_.
+            auto slot_index = (now_ + 1 + i) & MASK;
+            // We've reached slot 0. In normal scheduling this would
+            // mean advancing the next wheel and promoting or running
+            // those timers.  So we need to look in that slot too
+            // before proceeding with the rest of this wheel. But we
+            // can't just accept those results outright, we need to
+            // check the best result there against the next slot on
+            // this wheel.
+            if (slot_index == 0 && up_) {
+                const auto& slot = up_->slots_[(up_->now_ + 1) & MASK];
+                for (auto event = slot.events(); event != NULL;
+                     event = event->next_) {
+                    min = std::min(min, event->scheduled_at());
+                }
+            }
+            bool found = false;
+            const auto& slot = slots_[slot_index];
+            for (auto event = slot.events(); event != NULL;
+                 event = event->next_) {
+                min = std::min(min, event->scheduled_at());
+                found = true;
+            }
+            if (found) {
+                return min - now;
+            }
+        }
+
+        // Nothind found on this wheel, try the next one.
+        if (up_) {
+            return up_->ticks_to_next_event(max);
+        }
+        return max;
+    }
 
 private:
     TimerWheel(const TimerWheel& other) = delete;
@@ -178,7 +214,7 @@ private:
         if (offset + WIDTH_BITS < 64) {
             up_ = new TimerWheel(offset + WIDTH_BITS, down);
         }
-    }
+     }
 
     Tick now_;
 
@@ -208,7 +244,6 @@ void TimerEventInterface::relink(TimerWheelSlot* new_slot) {
             // Must be at head of slot. Move the next item to the head.
             slot_->events_ = next;
         }
-        slot_->lose_event();
     }
 
     // Insert in new slot.
@@ -220,7 +255,6 @@ void TimerEventInterface::relink(TimerWheelSlot* new_slot) {
                 old->prev_ = this;
             }
             new_slot->events_ = this;
-            new_slot->gain_event(this);
         } else {
             next_ = NULL;
         }

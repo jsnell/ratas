@@ -94,6 +94,13 @@ bool test_single_timer_no_hierarchy() {
     timers.advance(10);
     EXPECT_INTEQ(count, 4);
 
+    {
+        TimerEvent<Callback> timer2([&count] () { ++count; });
+        timers.schedule(&timer2, 5);
+    }
+    timers.advance(10);
+    EXPECT_INTEQ(count, 4);
+
     return true;
 }
 

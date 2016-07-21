@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <memory>
 
 typedef uint64_t Tick;
 
@@ -20,6 +21,10 @@ class TimerWheel;
 class TimerEventInterface {
 public:
     TimerEventInterface() {
+    }
+
+    virtual ~TimerEventInterface() {
+        cancel();
     }
 
     void cancel();
@@ -212,7 +217,7 @@ private:
         : now_(0),
           down_(down) {
         if (offset + WIDTH_BITS < 64) {
-            up_ = new TimerWheel(offset + WIDTH_BITS, down);
+            up_.reset(new TimerWheel(offset + WIDTH_BITS, down));
         }
      }
 
@@ -222,7 +227,7 @@ private:
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
     static const int MASK = (NUM_SLOTS - 1);
     TimerWheelSlot slots_[NUM_SLOTS];
-    TimerWheel* up_;
+    std::unique_ptr<TimerWheel> up_;
     TimerWheel* down_;
 };
 

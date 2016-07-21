@@ -207,6 +207,54 @@ bool test_ticks_to_next_event() {
     return true;
 }
 
+bool test_schedule_in_range() {
+    typedef std::function<void()> Callback;
+    TimerWheel timers;
+    TimerEvent<Callback> timer([] () { });
+
+    // No useful rounding possible.
+    timers.schedule_in_range(&timer, 281, 290);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 290);
+
+    // Pick a time aligned at slot boundary if possible.
+    timers.schedule_in_range(&timer, 256*4 - 1, 256*5 - 1);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*4);
+
+    timers.schedule_in_range(&timer, 256*4 + 1, 256*5);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*5);
+
+    // Event already in right range.
+    timers.schedule_in_range(&timer, 256*1, 256*10);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*5);
+
+    // Event canceled, but was previously scheduled in
+    // the right range. Should be ignored, and scheduled
+    // as normal to the end of the range.
+    timer.cancel();
+    timers.schedule_in_range(&timer, 256*1, 256*10);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*10);
+
+    // Make sure the decision on whether timer is in range or
+    // not is done based on absolute ticks, not relative ticks.
+    timers.advance(256*9);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*1);
+    timers.schedule_in_range(&timer, 256*9, 256*10);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 256*10);
+
+    // Try scheduling timers in random ranges.
+    for (int i = 0; i < 10000; ++i) {
+        int len1 = rand() % 20;
+        int len2 = rand() % 20;
+        int r1 = rand() % (1 << len1);
+        int r2 = r1 + (1 + rand() % (1 << len2));
+        timers.schedule_in_range(&timer, r1, r2);
+        EXPECT(timers.ticks_to_next_event() >= r1);
+        EXPECT(timers.ticks_to_next_event() <= r2);
+    }
+
+    return true;
+}
+
 bool test_reschedule_from_timer() {
     typedef std::function<void()> Callback;
     TimerWheel timers;
@@ -296,6 +344,7 @@ int main(void) {
     TEST(test_single_timer_no_hierarchy);
     TEST(test_single_timer_hierarchy);
     TEST(test_ticks_to_next_event);
+    TEST(test_schedule_in_range);
     TEST(test_single_timer_random);
     TEST(test_reschedule_from_timer);
     TEST(test_timeout_method);

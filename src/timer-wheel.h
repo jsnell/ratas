@@ -160,6 +160,33 @@ public:
         event->relink(slot);
     }
 
+    void schedule_in_range(TimerEventInterface* event,
+                           Tick start, Tick end) {
+        assert(end > start);
+        if (event->active()) {
+            auto current = event->scheduled_at() - now_;
+            // Event is already scheduled to happen in this range. Instead
+            // of always using the old slot, we could check compute the
+            // new slot and switch iff it's aligned better than the old one.
+            // But it seems hard to believe that could be worthwhile.
+            if (current >= start && current <= end) {
+                return;
+            }
+        }
+
+        // Zero as many bits (in WIDTH_BITS chunks) as possible
+        // from "end" while still keeping the output in the
+        // right range.
+        Tick mask = ~0;
+        while ((start & mask) != (end & mask)) {
+            mask = (mask << WIDTH_BITS);
+        }
+
+        Tick delta = end & (mask >> WIDTH_BITS);
+
+        schedule(event, delta);
+    }
+
     // Return the current tick value. Note that if the timers advance by
     // multiple ticks during a single call to advance(), the value of now()
     // will be the tick on which the timer was first run. Not the tick that

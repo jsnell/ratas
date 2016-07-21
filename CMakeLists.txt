@@ -4,7 +4,8 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g3 -Wall -Werror -Wno-sign-compare")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g3 -Wall -Werror -Wno-sign-compare -O3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -g3 -Wall -Werror -Wno-sign-compare -O3")
 
 add_executable(test_basic.testbin
   src/test/test_basic.cc)

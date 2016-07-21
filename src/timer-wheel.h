@@ -18,25 +18,28 @@ typedef uint64_t Tick;
 class TimerWheelSlot;
 class TimerWheel;
 
+// An abstract class representing an event that can be scheduled to
+// happen at some later time.
 class TimerEventInterface {
 public:
     TimerEventInterface() {
     }
 
+    // TimerEvents are automatically canceled on destruction.
     virtual ~TimerEventInterface() {
         cancel();
     }
 
+    // Unschedule this timer. It's safe to cancel a timer that is inactive.
     void cancel();
 
-    virtual void execute() = 0;
-
+    // Return true iff the timer is currently scheduled for execution.
     bool active() const {
         return slot_ != NULL;
     }
 
+    // Return the absolute tick this timer is scheduled to be executed on.
     Tick scheduled_at() const { return scheduled_at_; }
-    void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
 
 private:
     TimerEventInterface(const TimerEventInterface& other) = delete;
@@ -44,6 +47,12 @@ private:
     friend TimerWheelSlot;
     friend TimerWheel;
 
+    // Implement in subclasses. Executes the timer callback.
+    virtual void execute() = 0;
+
+    void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
+    // Move the timer to another slot. (It's safe for either the current
+    // or new slot to be NULL).
     void relink(TimerWheelSlot* slot);
 
     Tick scheduled_at_;
@@ -56,10 +65,12 @@ private:
     TimerEventInterface* prev_ = NULL;
 };
 
+// An event that takes the callback (of type CBType) to execute as
+// a constructor parameter.
 template<typename CBType>
 class TimerEvent : public TimerEventInterface {
 public:
-    TimerEvent<CBType>(const CBType& callback)
+    explicit TimerEvent<CBType>(const CBType& callback)
       : callback_(callback) {
     }
 
@@ -73,6 +84,9 @@ private:
     CBType callback_;
 };
 
+// An event that's specialized with a (static) member function of class T,
+// and a dynamic instance of T. Timer execution causes an invocation of the
+// member function on the instance.
 template<typename T, void(T::*MFun)() >
 class MemberTimerEvent : public TimerEventInterface {
 public:
@@ -87,12 +101,16 @@ private:
     T* obj_;
 };
 
+// Purely an implementation detail.
 class TimerWheelSlot {
 public:
     TimerWheelSlot() {
     }
 
+private:
+    // Return the first event queued in this slot.
     const TimerEventInterface* events() const { return events_; }
+    // Deque the first event from the slot, and return it.
     TimerEventInterface* pop_event() {
         auto event = events_;
         events_ = event->next_;
@@ -104,88 +122,41 @@ public:
         return event;
     }
 
-private:
     TimerWheelSlot(const TimerWheelSlot& other) = delete;
     TimerWheelSlot& operator=(const TimerWheelSlot& other) = delete;
     friend TimerEventInterface;
+    friend TimerWheel;
 
+    // Doubly linked (inferior) list of events.
     TimerEventInterface* events_ = NULL;
 };
 
 class TimerWheel {
 public:
-    TimerWheel()
-        : now_(0),
+    TimerWheel(Tick now = 0)
+        : now_(now),
           up_(new TimerWheel(WIDTH_BITS, this)),
           down_(NULL) {
     }
 
-    void advance(Tick delta) {
-        while (delta--) {
-            now_++;
-            size_t slot_index = now_ & MASK;
-            auto slot = &slots_[slot_index];
-            if (slot_index == 0 && up_) {
-                up_->advance(1);
-            }
-            while (slot->events()) {
-                auto event = slot->pop_event();
-                if (down_) {
-                    assert((down_->now_ & MASK) == 0);
-                    Tick now = down_->now();
-                    if (now >= event->scheduled_at()) {
-                        event->execute();
-                    } else {
-                        down_->schedule(event,
-                                        event->scheduled_at() - now);
-                    }
-                } else {
-                    event->execute();
-                }
-            }
-        }
-    }
+    // Advance the TimerWheel by the specified number of ticks, and execute
+    // any events scheduled for execution at or before that time.
+    // - It is safe to cancel or schedule timers from within timer callbacks.
+    // - During the execution of the callback the observable timer tick will
+    //   be the tick it was scheduled to run on; not the tick the clock will
+    //   be advanced to.
+    // - Events will happen in order; all events scheduled for tick X will
+    //   be executed before any event scheduled for tick X+1.
+    void advance(Tick delta);
 
-    void schedule(TimerEventInterface* event, Tick delta) {
-        if (!down_) {
-            event->set_scheduled_at(now_ + delta);
-        }
+    // Schedule the event to be executed delta ticks from the current time.
+    void schedule(TimerEventInterface* event, Tick delta);
 
-        if (delta >= NUM_SLOTS) {
-            return up_->schedule(event, (delta + (now_ & MASK)) >> WIDTH_BITS);
-        }
-
-        size_t slot_index = (now_ + delta) & MASK;
-        auto slot = &slots_[slot_index];
-        event->relink(slot);
-    }
-
+    // Schedule the event to happen at some time between start and end
+    // ticks from the current time. The actual time will be determined
+    // by the TimerWheel to minimize rescheduling and promotion overhead.
     void schedule_in_range(TimerEventInterface* event,
-                           Tick start, Tick end) {
-        assert(end > start);
-        if (event->active()) {
-            auto current = event->scheduled_at() - now_;
-            // Event is already scheduled to happen in this range. Instead
-            // of always using the old slot, we could check compute the
-            // new slot and switch iff it's aligned better than the old one.
-            // But it seems hard to believe that could be worthwhile.
-            if (current >= start && current <= end) {
-                return;
-            }
-        }
-
-        // Zero as many bits (in WIDTH_BITS chunks) as possible
-        // from "end" while still keeping the output in the
-        // right range.
-        Tick mask = ~0;
-        while ((start & mask) != (end & mask)) {
-            mask = (mask << WIDTH_BITS);
-        }
-
-        Tick delta = end & (mask >> WIDTH_BITS);
-
-        schedule(event, delta);
-    }
+                           Tick start, Tick end);
 
     // Return the current tick value. Note that if the timers advance by
     // multiple ticks during a single call to advance(), the value of now()
@@ -193,48 +164,10 @@ public:
     // the timer eventually will advance to.
     Tick now() const { return now_; }
 
-    Tick ticks_to_next_event(const Tick& max = 0) {
-        // The actual current time (not the bitshifted time)
-        Tick now = down_ ? down_->now() : now_;
-
-        // Smallest tick we've found.
-        Tick min = max ? now + max : std::numeric_limits<Tick>::max();
-        for (int i = 0; i < NUM_SLOTS; ++i) {
-            // Note: Unlike the uses of "now", slot index calculations really
-            // need to use now_.
-            auto slot_index = (now_ + 1 + i) & MASK;
-            // We've reached slot 0. In normal scheduling this would
-            // mean advancing the next wheel and promoting or running
-            // those timers.  So we need to look in that slot too
-            // before proceeding with the rest of this wheel. But we
-            // can't just accept those results outright, we need to
-            // check the best result there against the next slot on
-            // this wheel.
-            if (slot_index == 0 && up_) {
-                const auto& slot = up_->slots_[(up_->now_ + 1) & MASK];
-                for (auto event = slot.events(); event != NULL;
-                     event = event->next_) {
-                    min = std::min(min, event->scheduled_at());
-                }
-            }
-            bool found = false;
-            const auto& slot = slots_[slot_index];
-            for (auto event = slot.events(); event != NULL;
-                 event = event->next_) {
-                min = std::min(min, event->scheduled_at());
-                found = true;
-            }
-            if (found) {
-                return min - now;
-            }
-        }
-
-        // Nothind found on this wheel, try the next one.
-        if (up_) {
-            return up_->ticks_to_next_event(max);
-        }
-        return max;
-    }
+    // Return the number of ticks remaining until the next timer will get
+    // executed. If the max parameter is passed, that will be the maximum
+    // tick value that gets returned.
+    Tick ticks_to_next_event(const Tick& max = std::numeric_limits<Tick>::max());
 
 private:
     TimerWheel(const TimerWheel& other) = delete;
@@ -257,6 +190,8 @@ private:
     std::unique_ptr<TimerWheel> up_;
     TimerWheel* down_;
 };
+
+// Implementation
 
 void TimerEventInterface::relink(TimerWheelSlot* new_slot) {
     if (new_slot == slot_) {
@@ -302,6 +237,116 @@ void TimerEventInterface::cancel() {
     }
 
     relink(NULL);
+}
+
+void TimerWheel::advance(Tick delta) {
+    while (delta--) {
+        now_++;
+        size_t slot_index = now_ & MASK;
+        auto slot = &slots_[slot_index];
+        if (slot_index == 0 && up_) {
+            up_->advance(1);
+        }
+        while (slot->events()) {
+            auto event = slot->pop_event();
+            if (down_) {
+                assert((down_->now_ & MASK) == 0);
+                Tick now = down_->now();
+                if (now >= event->scheduled_at()) {
+                    event->execute();
+                } else {
+                    down_->schedule(event,
+                                    event->scheduled_at() - now);
+                }
+            } else {
+                event->execute();
+            }
+        }
+    }
+}
+
+void TimerWheel::schedule(TimerEventInterface* event, Tick delta) {
+    if (!down_) {
+        event->set_scheduled_at(now_ + delta);
+    }
+
+    if (delta >= NUM_SLOTS) {
+        return up_->schedule(event, (delta + (now_ & MASK)) >> WIDTH_BITS);
+    }
+
+    size_t slot_index = (now_ + delta) & MASK;
+    auto slot = &slots_[slot_index];
+    event->relink(slot);
+}
+
+void TimerWheel::schedule_in_range(TimerEventInterface* event,
+                                   Tick start, Tick end) {
+    assert(end > start);
+    if (event->active()) {
+        auto current = event->scheduled_at() - now_;
+        // Event is already scheduled to happen in this range. Instead
+        // of always using the old slot, we could check compute the
+        // new slot and switch iff it's aligned better than the old one.
+        // But it seems hard to believe that could be worthwhile.
+        if (current >= start && current <= end) {
+            return;
+        }
+    }
+
+    // Zero as many bits (in WIDTH_BITS chunks) as possible
+    // from "end" while still keeping the output in the
+    // right range.
+    Tick mask = ~0;
+    while ((start & mask) != (end & mask)) {
+        mask = (mask << WIDTH_BITS);
+    }
+
+    Tick delta = end & (mask >> WIDTH_BITS);
+
+    schedule(event, delta);
+}
+
+Tick TimerWheel::ticks_to_next_event(const Tick& max) {
+    // The actual current time (not the bitshifted time)
+    Tick now = down_ ? down_->now() : now_;
+
+    // Smallest tick (relative to now) we've found.
+    Tick min = max;
+    for (int i = 0; i < NUM_SLOTS; ++i) {
+        // Note: Unlike the uses of "now", slot index calculations really
+        // need to use now_.
+        auto slot_index = (now_ + 1 + i) & MASK;
+        // We've reached slot 0. In normal scheduling this would
+        // mean advancing the next wheel and promoting or running
+        // those timers.  So we need to look in that slot too
+        // before proceeding with the rest of this wheel. But we
+        // can't just accept those results outright, we need to
+        // check the best result there against the next slot on
+        // this wheel.
+        if (slot_index == 0 && up_) {
+            const auto& slot = up_->slots_[(up_->now_ + 1) & MASK];
+            for (auto event = slot.events(); event != NULL;
+                 event = event->next_) {
+                min = std::min(min, event->scheduled_at() - now);
+            }
+        }
+        bool found = false;
+        const auto& slot = slots_[slot_index];
+        for (auto event = slot.events(); event != NULL;
+             event = event->next_) {
+            min = std::min(min, event->scheduled_at() - now);
+            found = true;
+        }
+        if (found) {
+            return min;
+        }
+    }
+
+    // Nothing found on this wheel, try the next one.
+    if (up_) {
+        return up_->ticks_to_next_event(max);
+    }
+    return max;
 }
 
 #endif //  _TIMER_WHEEL_H

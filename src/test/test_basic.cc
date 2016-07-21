@@ -155,7 +155,8 @@ bool test_ticks_to_next_event() {
 
     // No timers scheduled, return the max value.
     EXPECT_INTEQ(timers.ticks_to_next_event(100), 100);
-    EXPECT_INTEQ(timers.ticks_to_next_event(0), 0);
+    EXPECT_INTEQ(timers.ticks_to_next_event(),
+                 std::numeric_limits<Tick>::max());
 
     for (int i = 0; i < 10; ++i) {
         // Just vanilla tests
@@ -203,6 +204,10 @@ bool test_ticks_to_next_event() {
         // Again, do this from a bunch of different locatoins.
         timers.advance(32);
     }
+
+    timer.cancel();
+    EXPECT_INTEQ(timers.ticks_to_next_event(),
+                 std::numeric_limits<Tick>::max());
 
     return true;
 }

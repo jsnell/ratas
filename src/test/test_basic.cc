@@ -294,7 +294,8 @@ bool test_single_timer_random() {
         int r = 1 + rand() % ( 1 << len);
 
         timers.schedule(&timer, r);
-        timers.advance(r - 1);
+        if (r > 1)
+            timers.advance(r - 1);
         EXPECT_INTEQ(count, i);
         timers.advance(1);
         EXPECT_INTEQ(count, i + 1);

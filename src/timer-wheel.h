@@ -219,7 +219,7 @@ class TimerWheel {
 public:
     TimerWheel(Tick now = 0)
         : now_(now),
-          out_(new TimerWheel(WIDTH_BITS, this)),
+          out_(new TimerWheel(now, WIDTH_BITS, this)),
           core_(NULL) {
     }
 
@@ -261,18 +261,21 @@ private:
     TimerWheel(const TimerWheel& other) = delete;
     TimerWheel& operator=(const TimerWheel& other) = delete;
 
-    TimerWheel(int offset, TimerWheel* down)
-        : now_(0),
+    TimerWheel(Tick now, int offset, TimerWheel* down)
+        : now_(now >> offset),
+          shift_(offset),
           core_(down) {
         if (offset + WIDTH_BITS < 64) {
-            out_.reset(new TimerWheel(offset + WIDTH_BITS, down));
+            out_.reset(new TimerWheel(now, offset + WIDTH_BITS, down));
         }
-     }
+    }
 
     // The current timestamp for this wheel. This will be right-shifted
     // such that each slot is separated by exactly one tick even on
     // the outermost wheels.
     Tick now_;
+    // The amount that the tick has been right-shifted by.
+    int shift_ = 0;
 
     static const int WIDTH_BITS = 8;
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
@@ -453,10 +456,12 @@ Tick TimerWheel::ticks_to_next_event(const Tick& max) {
         }
     }
 
-    // Nothing found on this wheel, try the next one.
-    if (out_) {
+    // Nothing found on this wheel, try the next one (unless the wheel can't
+    // possibly contain an event scheduled earlier than "max").
+    if (out_ && (max >> out_->shift_) > 0) {
         return out_->ticks_to_next_event(max);
     }
+
     return max;
 }
 

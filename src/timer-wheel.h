@@ -34,6 +34,50 @@
 // events are promoted from the second wheel to the core. On each
 // rotation of the second wheel, one slot's worth of events is
 // promoted from the third wheel to the second, and so on.
+//
+// The basic usage is to create a single TimerWheel object and
+// multiple TimerEvent or MemberTimerEvent objects. The events are
+// scheduled for execution using TimerWheel::schedule() or
+// TimerWheel::schedule_in_range(), or unscheduled using the event's
+// cancel() method.
+//
+// Example usage:
+//
+//      typedef std::function<void()> Callback;
+//      TimerWheel timers;
+//      int count = 0;
+//      TimerEvent<Callback> timer([&count] () { ++count; });
+//
+//      timers.schedule(&timer, 5);
+//      timers.advance(4);
+//      assert(count == 0);
+//      timers.advance(1);
+//      assert(count == 1);
+//
+//      timers.schedule(&timer, 5);
+//      timer.cancel();
+//      timers.advance(4);
+//      assert(count == 1);
+//
+// To tie events to specific member functions of an object instead of
+// a callback function, use MemberTimerEvent instead of TimerEvent.
+// For example:
+//
+//      class Test {
+//        public:
+//            Test() : inc_timer_(this) {
+//            }
+//            void start(TimerWheel* timers) {
+//                timers->schedule(&inc_timer_, 10);
+//            }
+//            void on_inc() {
+//                count_++;
+//            }
+//            int count() { return count_; }
+//        private:
+//            MemberTimerEvent<Test, &Test::on_inc> inc_timer_;
+//            int count_ = 0;
+//      };
 
 #ifndef _TIMER_WHEEL_H
 #define _TIMER_WHEEL_H

@@ -13,8 +13,8 @@
 //   between efficiency of one operation at a low occupancy rate and
 //   another operation at a high rate, we choose the latter.
 // - Tries to minimize the cost of event rescheduling or cancelation,
-//   on the assumption that a large percentage of timers will never
-//   run. The implementation tries avoids unnecessary work when an
+//   on the assumption that a large percentage of events will never
+//   be triggered. The implementation tries avoids unnecessary work when an
 //   event is rescheduled, and provides a way for the user specify a
 //   range of acceptable execution times instead of just an exact one.
 // - An interface that at least the author finds more convenient than
@@ -62,15 +62,15 @@ public:
         cancel();
     }
 
-    // Unschedule this timer. It's safe to cancel a timer that is inactive.
+    // Unschedule this event. It's safe to cancel an event that is inactive.
     void cancel();
 
-    // Return true iff the timer is currently scheduled for execution.
+    // Return true iff the event is currently scheduled for execution.
     bool active() const {
         return slot_ != NULL;
     }
 
-    // Return the absolute tick this timer is scheduled to be executed on.
+    // Return the absolute tick this event is scheduled to be executed on.
     Tick scheduled_at() const { return scheduled_at_; }
 
 private:
@@ -79,11 +79,11 @@ private:
     friend TimerWheelSlot;
     friend TimerWheel;
 
-    // Implement in subclasses. Executes the timer callback.
+    // Implement in subclasses. Executes the event callback.
     virtual void execute() = 0;
 
     void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
-    // Move the timer to another slot. (It's safe for either the current
+    // Move the event to another slot. (It's safe for either the current
     // or new slot to be NULL).
     void relink(TimerWheelSlot* slot);
 
@@ -117,7 +117,7 @@ private:
 };
 
 // An event that's specialized with a (static) member function of class T,
-// and a dynamic instance of T. Timer execution causes an invocation of the
+// and a dynamic instance of T. Event execution causes an invocation of the
 // member function on the instance.
 template<typename T, void(T::*MFun)() >
 class MemberTimerEvent : public TimerEventInterface {
@@ -181,8 +181,8 @@ public:
 
     // Advance the TimerWheel by the specified number of ticks, and execute
     // any events scheduled for execution at or before that time.
-    // - It is safe to cancel or schedule timers from within timer callbacks.
-    // - During the execution of the callback the observable timer tick will
+    // - It is safe to cancel or schedule events from within event callbacks.
+    // - During the execution of the callback the observable event tick will
     //   be the tick it was scheduled to run on; not the tick the clock will
     //   be advanced to.
     // - Events will happen in order; all events scheduled for tick X will
@@ -201,15 +201,16 @@ public:
     void schedule_in_range(TimerEventInterface* event,
                            Tick start, Tick end);
 
-    // Return the current tick value. Note that if the timers advance by
-    // multiple ticks during a single call to advance(), the value of now()
-    // will be the tick on which the timer was first run. Not the tick that
-    // the timer eventually will advance to.
+    // Return the current tick value. Note that if the time increases
+    // by multiple ticks during a single call to advance(), during the
+    // execution of the event callback now() will return the tick that
+    // the event was scheduled to run on.
     Tick now() const { return now_; }
 
-    // Return the number of ticks remaining until the next timer will get
+    // Return the number of ticks remaining until the next event will get
     // executed. If the max parameter is passed, that will be the maximum
-    // tick value that gets returned.
+    // tick value that gets returned. The max parameter's value will also
+    // be returned if no events have been scheduled.
     Tick ticks_to_next_event(const Tick& max = std::numeric_limits<Tick>::max());
 
 private:
@@ -281,7 +282,7 @@ void TimerEventInterface::relink(TimerWheelSlot* new_slot) {
 }
 
 void TimerEventInterface::cancel() {
-    // It's ok to cancel a timer that's not running.
+    // It's ok to cancel a event that's not scheduled.
     if (!slot_) {
         return;
     }
@@ -370,8 +371,8 @@ Tick TimerWheel::ticks_to_next_event(const Tick& max) {
         // need to use now_.
         auto slot_index = (now_ + 1 + i) & MASK;
         // We've reached slot 0. In normal scheduling this would
-        // mean advancing the next wheel and promoting or running
-        // those timers.  So we need to look in that slot too
+        // mean advancing the next wheel and promoting or executing
+        // those events.  So we need to look in that slot too
         // before proceeding with the rest of this wheel. But we
         // can't just accept those results outright, we need to
         // check the best result there against the next slot on

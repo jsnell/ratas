@@ -422,10 +422,16 @@ Tick TimerWheel::ticks_to_next_event(const Tick& max) {
         // check the best result there against the next slot on
         // this wheel.
         if (slot_index == 0 && out_) {
-            const auto& slot = out_->slots_[(out_->now_ + 1) & MASK];
-            for (auto event = slot.events(); event != NULL;
-                 event = event->next_) {
-                min = std::min(min, event->scheduled_at() - now);
+            // Exception: If we're in the core wheel, and slot 0 is
+            // not empty, there's no point in looking in the outer wheel.
+            // It's guaranteed that the events actually in slot 0 will be
+            // executed no later than anything in the outer wheel.
+            if (core_ || !slots_[0].events()) {
+                const auto& slot = out_->slots_[(out_->now_ + 1) & MASK];
+                for (auto event = slot.events(); event != NULL;
+                     event = event->next_) {
+                    min = std::min(min, event->scheduled_at() - now);
+                }
             }
         }
         bool found = false;
@@ -433,7 +439,14 @@ Tick TimerWheel::ticks_to_next_event(const Tick& max) {
         for (auto event = slot.events(); event != NULL;
              event = event->next_) {
             min = std::min(min, event->scheduled_at() - now);
-            found = true;
+            // In the core wheel all the events in a slot are guaranteed to
+            // run at the same time, so it's enough to just look at the first
+            // one.
+            if (!core_) {
+                return min;
+            } else {
+                found = true;
+            }
         }
         if (found) {
             return min;

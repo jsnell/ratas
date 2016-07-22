@@ -10,6 +10,9 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -g3 -Wall -Werror -Wno-sign-compare
 add_executable(test_basic.testbin
   src/test/test_basic.cc)
 
+add_executable(test_benchmark.testbin
+  src/test/test_benchmark.cc)
+
 enable_testing()
 
 add_test(test_basic bin/test_basic.testbin)

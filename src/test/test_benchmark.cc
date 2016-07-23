@@ -1,4 +1,4 @@
-// -*- mode: c++; c-basic-offset: 4 indent-tabs-mode: nil -*- */
+// -*- mode: c++; c-basic-offset: 4 indent-tabs-mode: nil -*-
 //
 // Copyright 2016 Juho Snellman, released under a MIT license (see
 // LICENSE).
@@ -12,7 +12,8 @@ static bool allow_schedule_in_range = true;
 // Set to true to print a trace, to confirm that different timer
 // implementations give the same results. (Or close enough results,
 // if using non-deterministic features like schedule_in_range).
-static bool print_trace = false;
+static bool print_trace = true;
+static int create_interval = 5;
 
 class Unit {
 public:
@@ -140,7 +141,7 @@ bool bench() {
         while (rand() % 2 == 0) {
             make_unit_pair(&timers, 1000*50 + rand() % 100);
         }
-        timers.advance(10);
+        timers.advance(create_interval);
     }
 
     while (timers.now() < 300*1000*50) {
@@ -152,6 +153,36 @@ bool bench() {
 }
 
 int main(void) {
+    if (char* s = getenv("BENCH_ALLOW_SCHEDULE_IN_RANGE")) {
+        std::string value = s;
+        if (value == "yes") {
+            allow_schedule_in_range = true;
+        } else if (value == "no") {
+            allow_schedule_in_range = false;
+        } else {
+            fprintf(stderr, "BENCH_ALLOW_SCHEDULE_IN_RANGE should be yes, no or not set");
+            return 1;
+        }
+    }
+    if (char* s = getenv("BENCH_PRINT_TRACE")) {
+        std::string value = s;
+        if (value == "yes") {
+            print_trace = true;
+        } else if (value == "no") {
+            print_trace = false;
+        } else {
+            fprintf(stderr, "BENCH_PRINT_TRACE should be yes, no or not set");
+            return 1;
+        }
+    }
+    if (char* s = getenv("BENCH_CREATE_INTERVAL")) {
+        char dummy;
+        if (sscanf(s, "%d%c", &create_interval, &dummy) != 1) {
+            fprintf(stderr, "BENCH_CREATE_INTERVAL should an integer");
+            return 1;
+        }
+    }
+
     bench();
     return 0;
 }

@@ -66,7 +66,17 @@ public:
     }
 
     void on_close() {
-        delete this;
+        if (closing_) {
+            delete this;
+        } else {
+            // First time the timeout triggers, we just put the
+            // object into a closing state where it'll start winding down
+            // work. Then we forcibly close it a bit later. We do it like
+            // this to remove any non-determinism between the execution order
+            // of the close timer and the pace timer.
+            closing_ = true;
+            timers_->schedule(&close_timer_, 10*1000*50);
+        }
     }
     void on_pace() {
         if (tx_count_) {
@@ -78,7 +88,9 @@ public:
         delete this;
     }
     void on_request() {
-        other_->transmit(100);
+        if (!closing_) {
+            other_->transmit(100);
+        }
     }
 
     void unidle() {
@@ -106,6 +118,7 @@ private:
     int pace_quota_ = 1;
     int pace_interval_ticks_ = 10;
     int request_interval_ = 100;
+    bool closing_ = false;
 };
 
 int Unit::id_counter_ = 0;

@@ -7,6 +7,7 @@
 // at some later point. Reasons you might want to use this implementation
 // instead of some other are:
 //
+// - A single-file C++11 implementation with no external dependencies.
 // - Optimized for high occupancy rates, on the assumption that the
 //   utilization of the timer queue is proportional to the utilization
 //   of the system as a whole. When a tradeoff needs to be made
@@ -14,11 +15,10 @@
 //   another operation at a high rate, we choose the latter.
 // - Tries to minimize the cost of event rescheduling or cancelation,
 //   on the assumption that a large percentage of events will never
-//   be triggered. The implementation tries avoids unnecessary work when an
+//   be triggered. The implementation avoids unnecessary work when an
 //   event is rescheduled, and provides a way for the user specify a
 //   range of acceptable execution times instead of just an exact one.
-// - An interface that at least the author finds more convenient than
-//   the typical options.
+// - An interface that at least the author finds convenient.
 //
 // The exact implementation strategy is a hierarchical timer
 // wheel. A timer wheel is effectively a ring buffer of linked lists

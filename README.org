@@ -1,0 +1,164 @@
+*** Ratas - A hierarchical timer wheel
+
+A timer queue which allows events to be scheduled for execution
+at some later point. Reasons you might want to use this implementation
+instead of some other are:
+
+- A single-file C++11 implementation with no external dependencies.
+- Optimized for high occupancy rates, on the assumption that the
+  utilization of the timer queue is proportional to the utilization
+  of the system as a whole. When a tradeoff needs to be made
+  between efficiency of one operation at a low occupancy rate and
+  another operation at a high rate, we choose the latter.
+- Tries to minimize the cost of event rescheduling or cancelation,
+  on the assumption that a large percentage of events will never
+  be triggered. The implementation avoids unnecessary work when an
+  event is rescheduled, and provides a way for the user specify a
+  range of acceptable execution times instead of just an exact one.
+- An interface that at least the author finds convenient.
+
+The exact implementation strategy is a hierarchical timer
+wheel. A timer wheel is effectively a ring buffer of linked lists
+of events, and a pointer to the ring buffer. As the time advances,
+the pointer moves forward, and any events in the ring buffer slots
+that the pointer passed will get executed.
+
+A hierarchical timer wheel layers multiple timer wheels running at
+different resolutions on top of each other. When an event is
+scheduled so far in the future than it does not fit the innermost
+(core) wheel, it instead gets scheduled on one of the outer
+wheels. On each rotation of the inner wheel, one slot's worth of
+events are promoted from the second wheel to the core. On each
+rotation of the second wheel, one slot's worth of events is
+promoted from the third wheel to the second, and so on.
+
+*** Usage
+The basic usage is to create a single =TimerWheel= object and
+multiple =TimerEvent= or =MemberTimerEvent= objects. The events are
+scheduled for execution using =TimerWheel::schedule()= or
+=TimerWheel::schedule_in_range()=, or unscheduled using the event's
+=cancel()= method. The callbacks of the =TimerEvent= objects will
+get triggered during call =TimerWheel::advance()=, once the time
+advances far enough.
+
+**** TimerEventInterface
+
+An abstract class representing an event that can be scheduled to
+happen at some later time.
+
+***** =TimerEventInterface::~TimerEventInterface()=
+
+TimerEvents are automatically canceled on destruction.
+
+***** =TimerEventInterface::cancel()=
+
+Unschedule this event. It's safe to cancel an event that is inactive.
+
+***** =TimerEventInterface::active()=
+
+Return true iff the event is currently scheduled for execution.
+
+***** =TimerEventInterface::scheduled_at()=
+
+Return the absolute tick this event is scheduled to be executed on.
+
+**** =TimerEvent<CBType>=
+
+An event that takes the callback (of type =CBType=) to execute as
+a constructor parameter.
+
+**** =MemberTimerEvent<T, MFun>=
+
+An event that's specialized with a (static) member function of class =T=,
+and a dynamic instance of =T=. Event execution causes an invocation of the
+member function on the instance.
+
+**** =TimerWheel=
+
+A =TimerWheel= is the entity that =TimerEvents= can be scheduled on
+for execution (with =schedule()= or =schedule_in_range()=), and will
+eventually be executed once the time advances far enough with the
+=advance()= method.
+
+***** =TimerWheel::advance(Tick delta, int level = 0)=
+Advance the TimerWheel by the specified number of ticks (=delta=), and execute
+any events scheduled for execution at or before that time.
+- It is safe to cancel or schedule events from within event callbacks.
+- During the execution of the callback the observable event tick will
+  be the tick it was scheduled to run on; not the tick the clock will
+  be advanced to.
+- Events will happen in order; all events scheduled for tick X will
+  be executed before any event scheduled for tick X+1.
+
+The =level= parameter is used to trigger timer advances on different
+levels of the hierarchy. It will generally not be useful to pass in
+any value other than the default 0.
+
+***** =schedule(TimerEventInterface* event, Tick delta)=
+Schedule the event to be executed =delta= ticks from the current time.
+The delta must be non-0.
+
+***** =schedule_in_range(TimerEventInterface* event, Tick start, Tick end)=
+Schedule the event to happen at some time between start and end
+ticks from the current time. The actual time will be determined
+by the =TimerWheel= to minimize rescheduling and promotion overhead.
+Both =start= and =end= must be non-0, and =end= must be greater than
+=start=.
+
+***** =now()=
+Return the current tick value. Note that if the time increases
+by multiple ticks during a single call to advance(), during the
+execution of the event callback now() will return the tick that
+the event was scheduled to run on.
+
+***** =ticks_to_next_event(const Tick& max = ..., int level = 0)=
+Return the number of ticks remaining until the next event will get
+executed. If the max parameter is passed, that will be the maximum
+tick value that gets returned. The max parameter's value will also
+be returned if no events have been scheduled.
+
+The =level= parameter is used to trigger timer advances on different
+levels of the hierarchy. It will generally not be useful to pass in
+any value other than the default 0.
+
+*** Examples
+
+#+BEGIN_SRC
+     typedef std::function<void()> Callback;
+     TimerWheel timers;
+     int count = 0;
+     TimerEvent<Callback> timer([&count] () { ++count; });
+
+     timers.schedule(&timer, 5);
+     timers.advance(4);
+     assert(count == 0);
+     timers.advance(1);
+     assert(count == 1);
+
+     timers.schedule(&timer, 5);
+     timer.cancel();
+     timers.advance(4);
+     assert(count == 1);
+#+END_SRC
+
+To tie events to specific member functions of an object instead of
+a callback function, use MemberTimerEvent instead of TimerEvent.
+For example:
+
+#+BEGIN_SRC
+     class Test {
+       public:
+           Test() : inc_timer_(this) {
+           }
+           void start(TimerWheel* timers) {
+               timers->schedule(&inc_timer_, 10);
+           }
+           void on_inc() {
+               count_++;
+           }
+           int count() { return count_; }
+       private:
+           MemberTimerEvent<Test, &Test::on_inc> inc_timer_;
+           int count_ = 0;
+     };
+#+END_SRC

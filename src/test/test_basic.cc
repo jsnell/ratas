@@ -3,7 +3,9 @@
 // Copyright 2016 Juho Snellman, released under a MIT license (see
 // LICENSE).
 
+#include <algorithm>
 #include <functional>
+#include <vector>
 
 #include "../timer-wheel.h"
 
@@ -304,6 +306,79 @@ bool test_single_timer_random() {
     return true;
 }
 
+bool test_maxexec() {
+    typedef std::function<void()> Callback;
+    TimerWheel timers;
+    int count0 = 0;
+    int count1 = 0;
+    TimerEvent<Callback> timer0([&count0] () { ++count0; });
+    TimerEvent<Callback> timer1a([&count1] () { ++count1; });
+    TimerEvent<Callback> timer1b([&count1] () { ++count1; });
+
+    // Schedule 3 timers to happen at the same time (on 2 different
+    // wheels).
+    timers.schedule(&timer1a, 256);
+    timers.schedule(&timer1b, 256);
+    timers.advance(1);
+    timers.schedule(&timer0, 255);
+    timers.advance(254);
+    EXPECT_INTEQ(count0, 0);
+    EXPECT_INTEQ(count1, 0);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 1);
+    EXPECT_INTEQ(timers.now(), 255);
+
+    // Then run them one by one.
+    EXPECT(!timers.advance(1, 1));
+    EXPECT_INTEQ(count0, 0);
+    EXPECT_INTEQ(count1, 1);
+    EXPECT_INTEQ(timers.ticks_to_next_event(), 0);
+    // Note that time has already advanced.
+    EXPECT_INTEQ(timers.now(), 256);
+    EXPECT(!timers.advance(0, 1));
+    EXPECT_INTEQ(count0, 0);
+    EXPECT_INTEQ(count1, 2);
+    EXPECT(!timers.advance(0, 1));
+    EXPECT_INTEQ(count0, 1);
+    EXPECT_INTEQ(count1, 2);
+
+    // We have not finished the tick yet, since the last call exactly
+    // drained the queue. But the next call will finish the tick while
+    // doing no actual work.
+    EXPECT_INTEQ(timers.ticks_to_next_event(100), 0);
+    EXPECT(timers.advance(0, 1));
+    EXPECT_INTEQ(timers.ticks_to_next_event(100), 100);
+
+    // Test scheduling while wheel is in the middle of partial tick handling.
+    timers.schedule(&timer1a, 256);
+    timers.advance(1);
+    timers.schedule(&timer0, 255);
+    timers.advance(254);
+    EXPECT(!timers.advance(1, 1));
+    // Now in the middle of the tick.
+    std::vector<bool> done(false, 512);
+    std::vector<TimerEvent<Callback>*> events;
+    // Schedule 512 timers, each setting the matching bit in "done".
+    for (int i = 0; i < done.size(); ++i) {
+        auto event = new TimerEvent<Callback>([&done, i] () { done[i] = true; });
+        events.push_back(event);
+        timers.schedule(event, i + 1);
+    }
+
+    // Close the tick.
+    EXPECT(timers.advance(0, 100));
+
+    // Now check that all 512 timers were scheduled in the right location.
+    for (int i = 0; i < done.size(); ++i) {
+        EXPECT_INTEQ(std::count(done.begin(), done.end(), true), i);
+        EXPECT(!done[i]);
+        timers.advance(1);
+        EXPECT(done[i]);
+    }
+
+    return true;
+}
+
+
 class Test {
 public:
     Test()
@@ -352,6 +427,7 @@ int main(void) {
     TEST(test_ticks_to_next_event);
     TEST(test_schedule_in_range);
     TEST(test_single_timer_random);
+    TEST(test_maxexec);
     TEST(test_reschedule_from_timer);
     TEST(test_timeout_method);
     // Test canceling timer from within timer

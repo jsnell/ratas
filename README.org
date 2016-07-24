@@ -15,6 +15,9 @@ instead of some other are:
   be triggered. The implementation avoids unnecessary work when an
   event is rescheduled, and provides a way for the user specify a
   range of acceptable execution times instead of just an exact one.
+- Facility for limiting the number of events to execute on a
+  single invocation, to allow fine grained interleaving of timer
+  processing and application logic.
 - An interface that at least the author finds convenient.
 
 The exact implementation strategy is a hierarchical timer
@@ -82,13 +85,20 @@ eventually be executed once the time advances far enough with the
 
 ***** =TimerWheel::advance(Tick delta, int level = 0)=
 Advance the TimerWheel by the specified number of ticks (=delta=), and execute
-any events scheduled for execution at or before that time.
+any events scheduled for execution at or before that time. The
+number of events executed can be restricted using the =max_execute=
+parameter. If that limit is reached, the function will return false,
+and the excess events will be processed on a subsequent call.
+
 - It is safe to cancel or schedule events from within event callbacks.
 - During the execution of the callback the observable event tick will
   be the tick it was scheduled to run on; not the tick the clock will
   be advanced to.
 - Events will happen in order; all events scheduled for tick X will
   be executed before any event scheduled for tick X+1.
+
+Delta should be non-0. The only exception is if the previous
+call to =advance()= returned false.
 
 The =level= parameter is used to trigger timer advances on different
 levels of the hierarchy. It will generally not be useful to pass in
@@ -116,6 +126,9 @@ Return the number of ticks remaining until the next event will get
 executed. If the max parameter is passed, that will be the maximum
 tick value that gets returned. The max parameter's value will also
 be returned if no events have been scheduled.
+
+Will return 0 if the wheel still has unprocessed events from the
+previous call to advance().
 
 The =level= parameter is used to trigger timer advances on different
 levels of the hierarchy. It will generally not be useful to pass in

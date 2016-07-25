@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include "../timer-wheel.h"
 
@@ -13,7 +15,7 @@ static bool allow_schedule_in_range = true;
 // implementations give the same results. (Or close enough results,
 // if using non-deterministic features like schedule_in_range).
 static bool print_trace = true;
-static int create_interval = 5;
+static int pair_count = 5;
 
 class Unit {
 public:
@@ -136,23 +138,34 @@ static void make_unit_pair(TimerWheel* timers, int request_interval) {
 
 bool bench() {
     TimerWheel timers;
+    // Create the events evenly spread during this time range.
+    int create_period = 1000*50;
+    double create_progress_per_iter = (double) pair_count / create_period * 2;
+    double current_progress = 0;
+    long int count = 0;
 
     while (timers.now() < 1000*50) {
-        while (rand() % 2 == 0) {
+        current_progress += (rand() * create_progress_per_iter) / RAND_MAX;
+        while (current_progress > 1) {
+            --current_progress;
             make_unit_pair(&timers, 1000*50 + rand() % 100);
+            ++count;
         }
-        timers.advance(create_interval);
+        timers.advance(1);
     }
 
+    fprintf(stderr, "%ld active pairs (%ld timers)\n",
+            count, count * 8);
+
     while (timers.now() < 300*1000*50) {
-        Tick t = timers.ticks_to_next_event(100);
+        Tick t = timers.ticks_to_next_event(10000);
         timers.advance(t);
     }
 
     return true;
 }
 
-int main(void) {
+int main(int argc, char** argv) {
     if (char* s = getenv("BENCH_ALLOW_SCHEDULE_IN_RANGE")) {
         std::string value = s;
         if (value == "yes") {
@@ -175,14 +188,23 @@ int main(void) {
             return 1;
         }
     }
-    if (char* s = getenv("BENCH_CREATE_INTERVAL")) {
+    if (char* s = getenv("BENCH_PAIR_COUNT")) {
         char dummy;
-        if (sscanf(s, "%d%c", &create_interval, &dummy) != 1) {
-            fprintf(stderr, "BENCH_CREATE_INTERVAL should an integer");
+        if (sscanf(s, "%d%c", &pair_count, &dummy) != 1) {
+            fprintf(stderr, "BENCH_PAIR_COUNT should an integer");
             return 1;
         }
     }
 
+    struct rusage start;
+    struct rusage end;
+    getrusage(RUSAGE_SELF, &start);
     bench();
+    getrusage(RUSAGE_SELF, &end);
+
+    printf("%s,%d,%s,%lf\n", argv[0], pair_count,
+           (allow_schedule_in_range ? "yes" : "no"),
+           (end.ru_utime.tv_sec + end.ru_utime.tv_usec / 1000000.0) -
+           (start.ru_utime.tv_sec + start.ru_utime.tv_usec / 1000000.0));
     return 0;
 }

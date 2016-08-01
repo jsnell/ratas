@@ -83,7 +83,7 @@ for execution (with =schedule()= or =schedule_in_range()=), and will
 eventually be executed once the time advances far enough with the
 =advance()= method.
 
-***** =TimerWheel::advance(Tick delta, int level = 0)=
+***** =TimerWheel::advance(Tick delta, size_t max_execute = ..., int level = 0)=
 Advance the TimerWheel by the specified number of ticks (=delta=), and execute
 any events scheduled for execution at or before that time. The
 number of events executed can be restricted using the =max_execute=
@@ -100,28 +100,30 @@ and the excess events will be processed on a subsequent call.
 Delta should be non-0. The only exception is if the previous
 call to =advance()= returned false.
 
+=advance()= should not be called from an event callback.
+
 The =level= parameter is used to trigger timer advances on different
 levels of the hierarchy. It will generally not be useful to pass in
 any value other than the default 0.
 
-***** =schedule(TimerEventInterface* event, Tick delta)=
+***** =TimerWheel::schedule(TimerEventInterface* event, Tick delta)=
 Schedule the event to be executed =delta= ticks from the current time.
 The delta must be non-0.
 
-***** =schedule_in_range(TimerEventInterface* event, Tick start, Tick end)=
+***** =TimerWheel::schedule_in_range(TimerEventInterface* event, Tick start, Tick end)=
 Schedule the event to happen at some time between start and end
 ticks from the current time. The actual time will be determined
 by the =TimerWheel= to minimize rescheduling and promotion overhead.
 Both =start= and =end= must be non-0, and =end= must be greater than
 =start=.
 
-***** =now()=
+***** =TimerWheel::now()=
 Return the current tick value. Note that if the time increases
 by multiple ticks during a single call to advance(), during the
 execution of the event callback now() will return the tick that
 the event was scheduled to run on.
 
-***** =ticks_to_next_event(const Tick& max = ..., int level = 0)=
+***** =TimerWheel::ticks_to_next_event(Tick max = ..., int level = 0)=
 Return the number of ticks remaining until the next event will get
 executed. If the max parameter is passed, that will be the maximum
 tick value that gets returned. The max parameter's value will also

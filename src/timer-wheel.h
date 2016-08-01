@@ -239,6 +239,8 @@ public:
     //
     // Delta should be non-0. The only exception is if the previous
     // call to advance() returned false.
+    //
+    // advance() should not be called from an event callback.
     bool advance(Tick delta,
                  size_t max_execute=std::numeric_limits<size_t>::max(),
                  int level = 0);
@@ -268,7 +270,7 @@ public:
     //
     // Will return 0 if the wheel still has unprocessed events from the
     // previous call to advance().
-    Tick ticks_to_next_event(const Tick& max = std::numeric_limits<Tick>::max(),
+    Tick ticks_to_next_event(Tick max = std::numeric_limits<Tick>::max(),
                              int level = 0);
 
 private:
@@ -467,7 +469,7 @@ void TimerWheel::schedule_in_range(TimerEventInterface* event,
     schedule(event, delta);
 }
 
-Tick TimerWheel::ticks_to_next_event(const Tick& max, int level) {
+Tick TimerWheel::ticks_to_next_event(Tick max, int level) {
     if (ticks_pending_) {
         return 0;
     }

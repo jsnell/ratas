@@ -82,8 +82,8 @@
 //            int count_ = 0;
 //      };
 
-#ifndef _TIMER_WHEEL_H
-#define _TIMER_WHEEL_H
+#ifndef RATAS_TIMER_WHEEL_H
+#define RATAS_TIMER_WHEEL_H
 
 #include <cassert>
 #include <cmath>
@@ -532,4 +532,4 @@ Tick TimerWheel::ticks_to_next_event(Tick max, int level) {
     return max;
 }
 
-#endif //  _TIMER_WHEEL_H
+#endif //  RATAS_TIMER_WHEEL_H

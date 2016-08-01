@@ -86,7 +86,6 @@
 #define RATAS_TIMER_WHEEL_H
 
 #include <cassert>
-#include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
@@ -282,7 +281,7 @@ private:
     bool process_current_slot(Tick now, size_t max_execute, int level);
 
     static const int WIDTH_BITS = 8;
-    static const int NUM_LEVELS = std::ceil(64 / WIDTH_BITS);
+    static const int NUM_LEVELS = (64 + WIDTH_BITS - 1) / WIDTH_BITS;
     static const int MAX_LEVEL = NUM_LEVELS - 1;
     static const int NUM_SLOTS = 1 << WIDTH_BITS;
     // A bitmask for looking at just the bits in the timestamp relevant to

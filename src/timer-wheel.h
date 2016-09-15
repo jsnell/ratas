@@ -110,7 +110,7 @@ public:
     }
 
     // Unschedule this event. It's safe to cancel an event that is inactive.
-    void cancel();
+    inline void cancel();
 
     // Return true iff the event is currently scheduled for execution.
     bool active() const {
@@ -132,7 +132,7 @@ private:
     void set_scheduled_at(Tick ts) { scheduled_at_ = ts; }
     // Move the event to another slot. (It's safe for either the current
     // or new slot to be NULL).
-    void relink(TimerWheelSlot* slot);
+    inline void relink(TimerWheelSlot* slot);
 
     Tick scheduled_at_;
     // The slot this event is currently in (NULL if not currently scheduled).
@@ -240,21 +240,21 @@ public:
     // call to advance() returned false.
     //
     // advance() should not be called from an event callback.
-    bool advance(Tick delta,
-                 size_t max_execute=std::numeric_limits<size_t>::max(),
-                 int level = 0);
+    inline bool advance(Tick delta,
+                        size_t max_execute=std::numeric_limits<size_t>::max(),
+                        int level = 0);
 
     // Schedule the event to be executed delta ticks from the current time.
     // The delta must be non-0.
-    void schedule(TimerEventInterface* event, Tick delta);
+    inline void schedule(TimerEventInterface* event, Tick delta);
 
     // Schedule the event to happen at some time between start and end
     // ticks from the current time. The actual time will be determined
     // by the TimerWheel to minimize rescheduling and promotion overhead.
     // Both start and end must be non-0, and the end must be greater than
     // the start.
-    void schedule_in_range(TimerEventInterface* event,
-                           Tick start, Tick end);
+    inline void schedule_in_range(TimerEventInterface* event,
+                                  Tick start, Tick end);
 
     // Return the current tick value. Note that if the time increases
     // by multiple ticks during a single call to advance(), during the
@@ -269,8 +269,8 @@ public:
     //
     // Will return 0 if the wheel still has unprocessed events from the
     // previous call to advance().
-    Tick ticks_to_next_event(Tick max = std::numeric_limits<Tick>::max(),
-                             int level = 0);
+    inline Tick ticks_to_next_event(Tick max = std::numeric_limits<Tick>::max(),
+                                    int level = 0);
 
 private:
     TimerWheel(const TimerWheel& other) = delete;
@@ -278,7 +278,7 @@ private:
 
     // This handles the actual work of executing event callbacks and
     // recursing to the outer wheels.
-    bool process_current_slot(Tick now, size_t max_execute, int level);
+    inline bool process_current_slot(Tick now, size_t max_execute, int level);
 
     static const int WIDTH_BITS = 8;
     static const int NUM_LEVELS = (64 + WIDTH_BITS - 1) / WIDTH_BITS;

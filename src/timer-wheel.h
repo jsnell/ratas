@@ -3,6 +3,8 @@
 // Copyright 2016 Juho Snellman, released under a MIT license (see
 // LICENSE).
 //
+// SPDX-License-Identifier: MIT
+//
 // A timer queue which allows events to be scheduled for execution
 // at some later point. Reasons you might want to use this implementation
 // instead of some other are:

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <string>
 #include <sys/time.h>
 #include <sys/resource.h>
 
